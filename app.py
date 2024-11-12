@@ -27,6 +27,7 @@ def write_excel_to_azure(df, blob_name):
     blob_client.upload_blob(stream, overwrite=True)
 
 # Load initial data files from Azure
+print('reading data first from cloud')
 df = read_excel_from_azure("Reg-Cap_stat_11-11-24.xlsx")
 df1 = read_excel_from_azure("faculty_dept.xlsx")
 
@@ -75,13 +76,14 @@ def create_df_a(df):
                                      'Building/Room', 'Instructor(s)/Teaching Assistant']]
 
     final_output = final_output.sort_values(['Combined_Course', 'Instructor(s)/Teaching Assistant'])
-
+    final_output = final_output.merge(df1, how='left', on='Instructor(s)/Teaching Assistant')
     output_file_a = f"combined_courses_file_a_{datetime.today().strftime('%Y%m%d')}.xlsx"
     write_excel_to_azure(final_output, output_file_a)
     return output_file_a, final_output
 
 output_file_a, final_df_a = create_df_a(df)
-
+print(final_df_a.head(1))
+print('reading data second  from cloud')
 df = read_excel_from_azure("Reg-Cap_stat_11-11-24.xlsx")
 df1 = read_excel_from_azure("faculty_dept.xlsx")
 # Process data to create file_b
@@ -131,7 +133,7 @@ def create_df_b(df, faculty_dept):
     return output_file_b, final_output
 
 output_file_b, final_df_b = create_df_b(df, df1)
-
+print(final_df_b.head(1))
 # Generate file_c and file_d
 def create_file_c_and_d(file_a, file_b):
     key_columns = ["Combined_Course", "Section Count", "Section", "Section Capacity",
@@ -152,6 +154,7 @@ def create_file_c_and_d(file_a, file_b):
 
 output_file_c, output_file_d, final_df_d = create_file_c_and_d(final_df_a, final_df_b)
 
+print(final_df_d.head(1))
 # Function to add pivot tables and save to Azure
 import pandas as pd
 import io
@@ -293,6 +296,8 @@ def add_pivot_tables_to_existing_excel(output_file, df):
         if row[0].value:
             row[0].font = bold_font
 
+    # Save the workbook back to the stream with formatting
+    stream.seek(0)
     wb.save(stream)
 
     # Upload the final file to Azure Blob Storage
@@ -300,7 +305,7 @@ def add_pivot_tables_to_existing_excel(output_file, df):
     blob_client.upload_blob(stream, overwrite=True)
     print(f"File uploaded to Azure Blob Storage as {output_file}")
 
+
 # Add pivot tables using the combined DataFrame (file_d)
 add_pivot_tables_to_existing_excel( output_file_d,final_df_d)
-
 
