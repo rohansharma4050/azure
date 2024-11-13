@@ -1,9 +1,9 @@
 import pandas as pd
-import numpy as np
 from flask import Flask, render_template_string
 
 app = Flask(__name__)
 
+# Sample file path (replace with your actual file path)
 file_path = 'combined_courses_file_d.xlsx'
 data_frames = pd.read_excel(file_path, sheet_name=None)
 
@@ -51,6 +51,9 @@ html = '''
         .tabs button:hover {
             background-color: {{ stevens_color_secondary }};
         }
+        .tabs button.active {
+            background-color: {{ stevens_color_secondary }};
+        }
         .tabcontent {
             display: none;
             padding: 20px;
@@ -76,24 +79,85 @@ html = '''
         th {
             background-color: {{ stevens_color_primary }};
             color: white;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        select {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            min-width: 200px;
+        }
+        .filter-container {
+            margin-bottom: 20px;
+        }
+        .no-results {
+            text-align: center;
+            padding: 20px;
+            color: {{ stevens_color_secondary }};
+            font-style: italic;
+            display: none;
         }
     </style>
     <script>
         function openTab(evt, sheetName) {
-            var i, tabcontent, tablinks;
-            tabcontent = document.getElementsByClassName("tabcontent");
-            for (i = 0; i < tabcontent.length; i++) {
+            var tabcontent = document.getElementsByClassName("tabcontent");
+            for (var i = 0; i < tabcontent.length; i++) {
                 tabcontent[i].style.display = "none";
             }
-            tablinks = document.getElementsByClassName("tablinks");
-            for (i = 0; i < tablinks.length; i++) {
-                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            var tablinks = document.getElementsByClassName("tablinks");
+            for (var i = 0; i < tablinks.length; i++) {
+                tablinks[i].classList.remove("active");
             }
             document.getElementById(sheetName).style.display = "block";
-            evt.currentTarget.className += " active";
+            evt.currentTarget.classList.add("active");
+            
+            // Reset the filter when switching tabs
+            var select = document.getElementById(sheetName + "-instructor");
+            if (select) {
+                select.value = "";
+                filterByInstructor(sheetName);
+            }
         }
+
+        function filterByInstructor(sheetName) {
+            var select = document.getElementById(sheetName + "-instructor");
+            var instructor = select.value.toLowerCase();
+            var tableContainer = document.getElementById(sheetName);
+            var rows = tableContainer.getElementsByClassName("table-row");
+            var visibleCount = 0;
+            
+            for (var i = 0; i < rows.length; i++) {
+                var row = rows[i];
+                var instructorCell = row.querySelector(".instructor-cell");
+                
+                if (instructorCell) {
+                    var instructorText = instructorCell.textContent.toLowerCase();
+                    if (instructor === "" || instructorText.includes(instructor)) {
+                        row.style.display = "";
+                        visibleCount++;
+                    } else {
+                        row.style.display = "none";
+                    }
+                }
+            }
+            
+            // Show/hide no results message
+            var noResults = tableContainer.querySelector(".no-results");
+            if (noResults) {
+                noResults.style.display = visibleCount === 0 ? "block" : "none";
+            }
+        }
+
         document.addEventListener("DOMContentLoaded", function() {
-            document.getElementsByClassName("tablinks")[0].click();
+            // Open first tab by default
+            var firstTab = document.querySelector(".tablinks");
+            if (firstTab) {
+                firstTab.click();
+            }
         });
     </script>
 </head>
@@ -108,6 +172,17 @@ html = '''
         {% for sheet_name, rows in data.items() %}
         <div id="{{ sheet_name }}" class="tabcontent">
             <h2>{{ sheet_name }}</h2>
+            <div class="filter-container">
+                <label for="{{ sheet_name }}-instructor">Filter by Instructor(s)/TA: </label>
+                <select id="{{ sheet_name }}-instructor" onchange="filterByInstructor('{{ sheet_name }}')">
+                    <option value="">All Instructors</option>
+                    {% for instructor in instructors[sheet_name] %}
+                        {% if instructor %}
+                            <option value="{{ instructor }}">{{ instructor }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
             <div class="table-container">
                 <table>
                     <thead>
@@ -119,14 +194,17 @@ html = '''
                     </thead>
                     <tbody>
                         {% for row in rows %}
-                            <tr>
+                            <tr class="table-row">
                                 {% for cell in row %}
-                                    <td>{{ cell if cell != 'nan' else '' }}</td>
+                                    <td class="{% if loop.index0 == instructor_index[sheet_name] %}instructor-cell{% endif %}">
+                                        {{ cell }}
+                                    </td>
                                 {% endfor %}
                             </tr>
                         {% endfor %}
                     </tbody>
                 </table>
+                <div class="no-results">No results found for the selected instructor.</div>
             </div>
         </div>
         {% endfor %}
@@ -135,25 +213,43 @@ html = '''
 </html>
 '''
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def index():
     heading = "Department of Systems and Enterprises Load on Instructors"
     processed_data = {}
     columns = {}
+    instructors = {}
+    instructor_index = {}
 
     for sheet_name, df in data_frames.items():
+        # Clean the dataframe
         df_cleaned = df.fillna('')
-        processed_data[sheet_name] = df_cleaned.astype(str).replace('nan', '').values.tolist()
+        
+        # Convert all columns to string and clean them
+        for col in df_cleaned.columns:
+            df_cleaned[col] = df_cleaned[col].astype(str).str.strip()
+        
+        processed_data[sheet_name] = df_cleaned.values.tolist()
         columns[sheet_name] = df_cleaned.columns.tolist()
+
+        # Handle instructors
+        instructor_col = 'Instructor(s)/Teaching Assistant'
+        if instructor_col in df_cleaned.columns:
+            instructor_index[sheet_name] = df_cleaned.columns.get_loc(instructor_col)
+            # Get unique instructors, remove empty strings and sort
+            unique_instructors = df_cleaned[instructor_col].unique()
+            instructors[sheet_name] = sorted([instr for instr in unique_instructors if instr and instr != 'nan'])
 
     return render_template_string(
         html,
         heading=heading,
         data=processed_data,
         columns=columns,
+        instructors=instructors,
+        instructor_index=instructor_index,
         stevens_color_primary=stevens_color_primary,
         stevens_color_secondary=stevens_color_secondary
     )
 
 if __name__ == "__main__":
-    app.run(port=5001)
+    app.run(debug=True, port=5001)
