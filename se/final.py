@@ -1,6 +1,4 @@
 
-# <--------------------- For anynoe not familiar with python just change the file_path variable and faculty_file_path
-# and run command "python3 daily.py in mac" or "python daily.py in windows  -------------------->
 
 
 #importing librarires 
@@ -15,21 +13,29 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import FormulaRule
 
-file_path = "Fall-2024-11-221-2024-2.xlsx"
+file_path = "AY-2024-2025 11-221-2024-2.xlsx"
 wb1 = openpyxl.load_workbook(file_path)
 expected_headers = ['Course', 'Instructor(s)/Teaching Assistant', 'Title', 
                     'Minimum Units', 'Section Capacity', 
                     'Enrollment Count', 'Meeting Patterns', 'Building/Room']
 
 header_row = None
-for row in wb1.active.iter_rows(min_row=1, max_row=20): 
-    header_values = [cell.value for cell in row if cell.value]  
+
+for row in wb1.active.iter_rows(min_row=1, max_row=20):  
+    header_values = [cell.value for cell in row if cell.value]
+
     if all(header in header_values for header in expected_headers):
         header_row = row[0].row
         break
 
 if header_row is None:
     raise ValueError("Header row not found within the checked range.")
+sheet = wb1.active
+rows_to_delete = header_row - 1
+
+for _ in range(rows_to_delete):
+    sheet.delete_rows(1)
+wb1.save(file_path)
 faculty_file_path = "faculty_dept.xlsx"
 
 df = pd.read_excel(file_path)
